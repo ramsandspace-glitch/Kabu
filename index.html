@@ -339,7 +339,7 @@
         class="hidden bg-slate-800 rounded-xl shadow-2xl p-8 max-w-2xl w-full text-slate-300"
       >
         <h3 class="text-3xl font-bold mb-6 text-center text-blue-400">
-          How to Play Kabu
+          How to Play Cabo
         </h3>
         <div
           id="rules-modal-content"
@@ -349,8 +349,8 @@
             <h4 class="font-semibold text-lg text-yellow-400">Objective</h4>
             <p>
               Be the player with the lowest score at the end of each round. The
-              game ends when any player's total score exceeds 100. The player
-              with the lowest total score at that point wins!
+              game ends when any player's total score reaches 100 or more. The
+              player with the lowest total score at that point wins!
             </p>
           </div>
           <div>
@@ -358,9 +358,12 @@
             <ul class="list-disc">
               <li><b>Aces:</b> 1 point</li>
               <li><b>2 to 10:</b> Face value (e.g., a '5' is 5 points)</li>
-              <li><b>Jack, Queen:</b> 10 points</li>
-              <li><b>Red Kings (♥, ♦):</b> 0 points (the best cards!)</li>
-              <li><b>Black Kings (♣, ♠):</b> 13 points (the worst cards!)</li>
+              <li><b>Jacks:</b> 11 points</li>
+              <li><b>Queens:</b> 12 points</li>
+              <li><b>King of Diamonds (♦):</b> 0 points (the best card!)</li>
+              <li>
+                <b>Other Kings (♥, ♣, ♠):</b> 13 points (the worst cards!)
+              </li>
             </ul>
           </div>
           <div>
@@ -406,15 +409,15 @@
           </div>
           <div>
             <h4 class="font-semibold text-lg text-yellow-400">
-              Calling "Kabu"
+              Calling "Cabo"
             </h4>
             <p>
-              If you think you have the lowest score, you can call "Kabu!" at
+              If you think you have the lowest score, you can call "Cabo!" at
               the start of your turn instead of drawing a card. This triggers
               one final turn for every other player.
             </p>
             <p class="mt-2">
-              <b>Scoring a "Kabu":</b> If you called Kabu and your score is the
+              <b>Scoring a "Cabo":</b> If you called Cabo and your score is the
               lowest (or tied for lowest), you get 0 points for the round! If
               you were wrong, you get your hand's value PLUS a 10-point penalty.
             </p>
@@ -496,6 +499,7 @@
         "♣": "#1e293b",
         "♠": "#1e293b",
       };
+      // Cabo uses full deck with special card values
       const VALUES = [
         "A",
         "2",
@@ -990,17 +994,15 @@
         return deck;
       };
 
+      // Cabo scoring: A=1, 2-10=face value, J=11, Q=12, K♦=0, other K=13
       const getCardValue = (card) => {
         if (!card || !card.value) return 0;
-        if (VALUES.indexOf(card.value) >= 1 && VALUES.indexOf(card.value) <= 9)
-          return VALUES.indexOf(card.value) + 1;
-        if (["J", "Q"].includes(card.value)) return 10;
-        if (card.value === "K" && (card.suit === "♥" || card.suit === "♦"))
-          return 0;
-        if (card.value === "K" && (card.suit === "♣" || card.suit === "♠"))
-          return 13;
         if (card.value === "A") return 1;
-        return 0;
+        if (card.value === "J") return 11;
+        if (card.value === "Q") return 12;
+        if (card.value === "K" && card.suit === "♦") return 0; // King of Diamonds = 0
+        if (card.value === "K") return 13; // Other Kings = 13
+        return parseInt(card.value);
       };
 
       const startGame = async () => {
@@ -1031,6 +1033,7 @@
           const players = gameData.players.map((p) => ({ ...p, hand: [] }));
           const scores = {};
 
+          // Cabo: Deal 4 cards to each player initially
           for (let i = 0; i < 4; i++) {
             for (const player of players) {
               player.hand.push(deck.pop());
@@ -1128,7 +1131,7 @@
           !localPlayerState.drawnCard
         ) {
           const kabuButton = document.createElement("button");
-          kabuButton.textContent = "Call Kabu!";
+          kabuButton.textContent = "Call Cabo!";
           kabuButton.className =
             "absolute -top-16 left-1/2 -translate-x-1/2 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition kabu-glow";
           kabuButton.onclick = callKabu;
@@ -1574,12 +1577,12 @@
             lastRoundPlayerId: userId,
             gameState: "kabu_called",
             log: arrayUnion(
-              `${localPlayerState.name} has called KABU! One more turn for everyone else.`
+              `${localPlayerState.name} has called CABO! One more turn for everyone else.`
             ),
           });
           endTurn(gameData);
         } catch (error) {
-          showModal("Error", "Failed to call Kabu. Please try again.");
+          showModal("Error", "Failed to call Cabo. Please try again.");
         }
       };
 
@@ -1627,22 +1630,31 @@
           roundScores[player.id] = handValue;
         });
 
-        const kabuPlayerId = gameData.kabuPlayerId;
-        if (kabuPlayerId) {
-          const kabuPlayerValue = roundScores[kabuPlayerId];
-          const minValue = Math.min(...Object.values(roundScores));
-          if (kabuPlayerValue > minValue) {
-            roundScores[kabuPlayerId] += 10; // Penalty
-          } else {
-            roundScores[kabuPlayerId] = 0; // Success!
-          }
-        }
+        // Cabo: Lowest score wins, add hand values to total scores
+        const minScore = Math.min(...Object.values(roundScores));
+        const winner = gameData.players.find(
+          (p) => roundScores[p.id] === minScore
+        );
 
         let newTotalScores = { ...gameData.scores };
-        for (const id in roundScores) {
-          if (gameData.players.some((p) => p.id === id)) {
-            newTotalScores[id] = (newTotalScores[id] || 0) + roundScores[id];
+
+        // Cabo scoring: winner gets 0, others add their hand value to total
+        gameData.players.forEach((player) => {
+          const playerScore = roundScores[player.id];
+          if (playerScore === minScore) {
+            // Winner gets 0 points
+            newTotalScores[player.id] = newTotalScores[player.id] || 0;
+          } else {
+            // Others add their hand value to their total score
+            newTotalScores[player.id] =
+              (newTotalScores[player.id] || 0) + playerScore;
           }
+        });
+
+        // Check for Cabo penalty (if someone called Cabo but didn't win)
+        const kabuPlayerId = gameData.kabuPlayerId;
+        if (kabuPlayerId && roundScores[kabuPlayerId] !== minScore) {
+          newTotalScores[kabuPlayerId] += 10; // 10-point penalty for wrong Cabo call
         }
 
         scoreboardTitle.textContent =
@@ -1651,9 +1663,11 @@
         gameData.players.forEach((p) => {
           const scoreRow = document.createElement("div");
           scoreRow.className = "flex justify-between items-center text-lg";
-          scoreRow.innerHTML = `<span>${p.name}</span><span>+${
-            roundScores[p.id]
-          }</span>`;
+          const roundPoints =
+            roundScores[p.id] === minScore
+              ? "0 (Winner!)"
+              : `+${roundScores[p.id]}`;
+          scoreRow.innerHTML = `<span>${p.name}</span><span>${roundPoints}</span>`;
           scoreboardBody.appendChild(scoreRow);
 
           const totalRow = document.createElement("div");
