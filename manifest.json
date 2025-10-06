@@ -1,0 +1,19 @@
+{
+  "name": "Kabu Card Game",
+  "short_name": "Kabu",
+  "description": "A real-time multiplayer card game",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["games", "entertainment"],
+  "lang": "en"
+}

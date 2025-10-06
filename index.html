@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Kabu - A real-time multiplayer card game of memory and daring. Play with friends online!"
+    />
+    <meta
+      name="keywords"
+      content="card game, multiplayer, real-time, kabu, firebase"
+    />
+    <meta name="author" content="Kabu Game" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Kabu - Real-Time Card Game</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Preload critical resources
+      const preloadLink = document.createElement("link");
+      preloadLink.rel = "preload";
+      preloadLink.href =
+        "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+      preloadLink.as = "script";
+      document.head.appendChild(preloadLink);
+    </script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        touch-action: manipulation;
+        background: #0f172a;
+      }
+      .card {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+      }
+      .card:hover {
+        transform: translateY(-10px);
+      }
+      .active-player-indicator {
+        box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.7);
+      }
+      .selected-card {
+        transform: translateY(-20px) scale(1.05);
+        box-shadow: 0 0 25px 10px rgba(34, 197, 94, 0.7);
+      }
+      .kabu-glow {
+        animation: kabu-glow-animation 2s infinite alternate;
+      }
+      @keyframes kabu-glow-animation {
+        from {
+          box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.6);
+        }
+        to {
+          box-shadow: 0 0 25px 10px rgba(239, 68, 68, 0.9);
+        }
+      }
+      .opponent-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 1rem;
+      }
+      .flippable-card-inner {
+        transition: transform 0.6s;
+        transform-style: preserve-3d;
+      }
+      .is-flipped {
+        transform: rotateY(180deg);
+      }
+      .card-face {
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+      .card-back {
+        transform: rotateY(180deg);
+        background-color: #1e293b;
+        background-image: radial-gradient(
+            circle at 25% 25%,
+            #475569 2%,
+            transparent 40%
+          ),
+          radial-gradient(circle at 75% 75%, #475569 2%, transparent 40%);
+        border: 2px solid #475569;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .card-back-inner {
+        width: 80%;
+        height: 80%;
+        border: 2px dashed #64748b;
+        border-radius: 0.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Playfair Display", serif;
+        font-size: 2.5rem;
+        color: #94a3b8;
+      }
+      .card-front {
+        background-color: #f1f5f9;
+        color: #1e293b;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 0.25rem;
+      }
+      .card-value {
+        font-size: 3.5rem;
+        font-weight: 700;
+        line-height: 1;
+        text-align: center;
+        font-family: "Playfair Display", serif;
+      }
+      .card-corner {
+        font-weight: 600;
+        font-size: 1.25rem;
+        line-height: 1;
+        text-align: center;
+      }
+      .card-corner.bottom {
+        transform: rotate(180deg);
+      }
+      #rules-modal-content ul {
+        list-style-position: inside;
+        text-align: left;
+      }
+      #rules-modal-content li {
+        margin-bottom: 0.5rem;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4"
+  >
+    <div id="app-container" class="w-full max-w-7xl mx-auto">
+      <!-- Landing Screen -->
+      <div
+        id="landing-screen"
+        class="text-center bg-slate-800 p-8 rounded-xl shadow-2xl"
+      >
+        <h1
+          class="text-5xl font-bold text-blue-400 mb-4"
+          style="font-family: 'Playfair Display', serif"
+        >
+          Kabu
+        </h1>
+        <p class="text-slate-300 mb-8">
+          A Real-Time Card Game of Memory & Daring
+        </p>
+        <div class="max-w-md mx-auto space-y-4">
+          <input
+            type="text"
+            id="player-name"
+            placeholder="Enter your name"
+            class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          />
+          <input
+            type="text"
+            id="game-id-input"
+            placeholder="Enter Game ID to join"
+            class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          />
+          <div class="flex flex-col sm:flex-row gap-4">
+            <button
+              id="create-game-btn"
+              class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 shadow-lg"
+            >
+              Create New Game
+            </button>
+            <button
+              id="join-game-btn"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 shadow-lg"
+            >
+              Join
+            </button>
+          </div>
+          <button
+            id="rules-btn"
+            class="w-full mt-2 bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 shadow-lg"
+          >
+            How to Play
+          </button>
+        </div>
+      </div>
+
+      <!-- Waiting Room -->
+      <div
+        id="waiting-room"
+        class="hidden text-center bg-slate-800 p-8 rounded-xl shadow-2xl"
+      >
+        <h2 class="text-3xl font-bold mb-4">Waiting for Players...</h2>
+        <p class="text-slate-400 mb-6">Share this Game ID with your friends:</p>
+        <div
+          class="bg-slate-900 rounded-lg p-4 mb-6 flex items-center justify-center gap-4"
+        >
+          <span
+            id="game-id-display"
+            class="text-2xl font-mono text-yellow-400"
+          ></span>
+          <button
+            id="copy-game-id-btn"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+          >
+            Copy
+          </button>
+        </div>
+        <h3 class="text-2xl font-semibold mb-4">Players Joined:</h3>
+        <div id="player-list" class="space-y-2 text-lg"></div>
+        <button
+          id="start-game-btn"
+          class="hidden mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition duration-300 shadow-lg disabled:bg-slate-500 disabled:cursor-not-allowed"
+        >
+          Start Game
+        </button>
+      </div>
+
+      <!-- Game Board -->
+      <div id="game-board" class="hidden w-full h-full">
+        <div class="grid grid-cols-6 gap-4 h-full">
+          <!-- Left Panel: Players & Log -->
+          <div
+            class="col-span-6 md:col-span-1 bg-slate-800 p-4 rounded-xl shadow-lg flex flex-col gap-4"
+          >
+            <div>
+              <h3 class="text-xl font-bold mb-2 text-blue-300">Players</h3>
+              <div id="game-player-list" class="space-y-2"></div>
+            </div>
+            <div class="flex-grow min-h-0">
+              <h3 class="text-xl font-bold mb-2 text-blue-300">Game Log</h3>
+              <div
+                id="game-log"
+                class="text-sm bg-slate-900 rounded-lg p-2 h-full overflow-y-auto text-slate-400"
+              ></div>
+            </div>
+          </div>
+
+          <!-- Center Panel: Game Area -->
+          <div
+            class="col-span-6 md:col-span-5 bg-slate-800 p-6 rounded-xl shadow-lg flex flex-col justify-between"
+          >
+            <!-- Opponents Area -->
+            <div id="opponents-area" class="opponent-grid mb-6"></div>
+
+            <!-- Deck and Discard Pile -->
+            <div class="flex justify-center items-center gap-8 my-8">
+              <div
+                id="deck-pile"
+                class="w-24 h-36 relative card cursor-pointer"
+              >
+                <div class="card-face card-back">
+                  <div class="card-back-inner">K</div>
+                </div>
+              </div>
+              <div
+                id="discard-pile"
+                class="w-24 h-36 relative card cursor-pointer"
+              >
+                <!-- Discard card content will be generated here -->
+              </div>
+            </div>
+
+            <!-- Current Player's Hand -->
+            <div class="mt-auto">
+              <div id="local-player-info" class="text-center mb-4">
+                <h2 id="local-player-name" class="text-2xl font-bold"></h2>
+              </div>
+              <div
+                id="player-hand"
+                class="flex justify-center items-end gap-4"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals Container -->
+    <div
+      id="modal-container"
+      class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+    >
+      <!-- Generic Message Modal -->
+      <div
+        id="message-modal"
+        class="hidden bg-slate-800 rounded-xl shadow-2xl p-8 text-center max-w-sm w-full"
+      >
+        <h3 id="modal-title" class="text-2xl font-bold mb-4"></h3>
+        <p id="modal-message" class="text-slate-300 mb-6"></p>
+        <button
+          id="modal-ok-btn"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition"
+        >
+          OK
+        </button>
+      </div>
+
+      <!-- Scoreboard Modal -->
+      <div
+        id="scoreboard-modal"
+        class="hidden bg-slate-800 rounded-xl shadow-2xl p-8 text-center max-w-lg w-full"
+      >
+        <h3
+          id="scoreboard-title"
+          class="text-3xl font-bold mb-6 text-yellow-400"
+        ></h3>
+        <div id="scoreboard-body" class="space-y-2 mb-6"></div>
+        <div
+          id="scoreboard-total-body"
+          class="space-y-2 mt-4 border-t border-slate-600 pt-4"
+        ></div>
+        <button
+          id="next-round-btn"
+          class="hidden mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition"
+        >
+          Next Round
+        </button>
+        <button
+          id="game-over-btn"
+          class="hidden mt-6 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition"
+        >
+          End Game
+        </button>
+      </div>
+
+      <!-- Rules Modal -->
+      <div
+        id="rules-modal"
+        class="hidden bg-slate-800 rounded-xl shadow-2xl p-8 max-w-2xl w-full text-slate-300"
+      >
+        <h3 class="text-3xl font-bold mb-6 text-center text-blue-400">
+          How to Play Kabu
+        </h3>
+        <div
+          id="rules-modal-content"
+          class="space-y-4 max-h-[70vh] overflow-y-auto pr-4"
+        >
+          <div>
+            <h4 class="font-semibold text-lg text-yellow-400">Objective</h4>
+            <p>
+              Be the player with the lowest score at the end of each round. The
+              game ends when any player's total score exceeds 100. The player
+              with the lowest total score at that point wins!
+            </p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-lg text-yellow-400">Card Values</h4>
+            <ul class="list-disc">
+              <li><b>Aces:</b> 1 point</li>
+              <li><b>2 to 10:</b> Face value (e.g., a '5' is 5 points)</li>
+              <li><b>Jack, Queen:</b> 10 points</li>
+              <li><b>Red Kings (♥, ♦):</b> 0 points (the best cards!)</li>
+              <li><b>Black Kings (♣, ♠):</b> 13 points (the worst cards!)</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-lg text-yellow-400">Gameplay</h4>
+            <p>
+              Each player starts with 4 face-down cards. At the very beginning
+              of a round, you get to secretly peek at your two closest cards.
+            </p>
+            <p class="mt-2">On your turn, you must do one of the following:</p>
+            <ul class="list-disc">
+              <li>Draw the top card from the <b>Deck</b>.</li>
+              <li>Draw the top card from the <b>Discard Pile</b>.</li>
+            </ul>
+            <p class="mt-2">
+              After drawing, you must swap that card with one of your four
+              face-down cards, placing the card from your hand onto the discard
+              pile.
+            </p>
+          </div>
+          <div>
+            <h4 class="font-semibold text-lg text-yellow-400">
+              Special Powers (Deck Only)
+            </h4>
+            <p>
+              If you draw from the Deck, you can choose to either
+              <b>keep the card</b> (and swap it) or <b>use its power</b> and
+              discard it immediately.
+            </p>
+            <ul class="list-disc">
+              <li>
+                <b>7 or 8 (Peek):</b> Secretly look at one of your own face-down
+                cards.
+              </li>
+              <li>
+                <b>9 or 10 (Spy):</b> Secretly look at one of an opponent's
+                face-down cards.
+              </li>
+              <li>
+                <b>Jack or Queen (Swap):</b> Blindly swap one of your cards with
+                one of an opponent's cards.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold text-lg text-yellow-400">
+              Calling "Kabu"
+            </h4>
+            <p>
+              If you think you have the lowest score, you can call "Kabu!" at
+              the start of your turn instead of drawing a card. This triggers
+              one final turn for every other player.
+            </p>
+            <p class="mt-2">
+              <b>Scoring a "Kabu":</b> If you called Kabu and your score is the
+              lowest (or tied for lowest), you get 0 points for the round! If
+              you were wrong, you get your hand's value PLUS a 10-point penalty.
+            </p>
+          </div>
+        </div>
+        <button
+          id="rules-close-btn"
+          class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+      import {
+        getAuth,
+        signInAnonymously,
+        onAuthStateChanged,
+      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+      import {
+        getFirestore,
+        doc,
+        getDoc,
+        setDoc,
+        onSnapshot,
+        updateDoc,
+        arrayUnion,
+        arrayRemove,
+      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+      import {
+        getDatabase,
+        ref,
+        onValue,
+        set,
+        onDisconnect,
+        serverTimestamp,
+      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+
+      // Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyDns9qn-s3kK4K0gNAhz1dM4e5E_WSoh-g",
+        authDomain: "kabu-c3f2f.firebaseapp.com",
+        databaseURL: "https://kabu-c3f2f-default-rtdb.firebaseio.com",
+        projectId: "kabu-c3f2f",
+        storageBucket: "kabu-c3f2f.appspot.com",
+        messagingSenderId: "419913336063",
+        appId: "1:419913336063:web:1d16b35121ea78f93d38ca",
+      };
+
+      // Renamed to avoid conflicts with firebaseConfig.appId
+      const gameAppId = "kabu-game-app";
+
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      const rtdb = getDatabase(app);
+
+      let userId = null;
+      let gameId = null;
+      let localPlayerState = {
+        name: "",
+        selectedCardIndex: null,
+        drawnCard: null,
+        isPeeking: false,
+        isSpying: false,
+        isSwapping: false,
+      };
+      let unsubscribeGame = null;
+      let isOnline = navigator.onLine;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      let reconnectTimeout = null;
+
+      const SUITS = {
+        "♥": "#ef4444",
+        "♦": "#ef4444",
+        "♣": "#1e293b",
+        "♠": "#1e293b",
+      };
+      const VALUES = [
+        "A",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "J",
+        "Q",
+        "K",
+      ];
+
+      const landingScreen = document.getElementById("landing-screen");
+      const waitingRoom = document.getElementById("waiting-room");
+      const gameBoard = document.getElementById("game-board");
+      const createGameBtn = document.getElementById("create-game-btn");
+      const joinGameBtn = document.getElementById("join-game-btn");
+      const startGameBtn = document.getElementById("start-game-btn");
+      const copyGameIdBtn = document.getElementById("copy-game-id-btn");
+      const deckPile = document.getElementById("deck-pile");
+      const discardPile = document.getElementById("discard-pile");
+      const rulesBtn = document.getElementById("rules-btn");
+      const rulesModal = document.getElementById("rules-modal");
+      const rulesCloseBtn = document.getElementById("rules-close-btn");
+      const modalContainer = document.getElementById("modal-container");
+
+      const initialize = async (retryCount = 0) => {
+        // Register service worker for offline support
+        if ("serviceWorker" in navigator) {
+          try {
+            await navigator.serviceWorker.register("/sw.js");
+          } catch (error) {
+            // Service worker registration failed - app will still work
+          }
+        }
+
+        // Check network connectivity first
+        if (!navigator.onLine) {
+          hideLoading();
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection and try again."
+          );
+          return;
+        }
+
+        showLoading("Connecting to game server...");
+        try {
+          await signInAnonymously(auth);
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+
+          let errorMessage =
+            "Unable to connect to the game server. Please refresh the page and try again.";
+          let errorTitle = "Connection Error";
+          let canRetry = false;
+
+          if (error.code === "auth/network-request-failed") {
+            canRetry = true;
+          } else if (error.code === "auth/too-many-requests") {
+            errorMessage =
+              "Too many connection attempts. Please wait a moment and try again.";
+            canRetry = true;
+          } else if (error.code === "auth/operation-not-allowed") {
+            errorTitle = "Service Unavailable";
+            errorMessage =
+              "Game service is temporarily unavailable. Please try again later.";
+          } else if (error.code === "auth/project-not-found") {
+            errorTitle = "Service Error";
+            errorMessage =
+              "Game service configuration error. Please contact support.";
+          }
+
+          if (canRetry && retryCount < 2) {
+            showModal(errorTitle, errorMessage, () => {
+              setTimeout(() => initialize(retryCount + 1), 2000);
+            });
+          } else {
+            showModal(errorTitle, errorMessage);
+          }
+        }
+      };
+
+      onAuthStateChanged(auth, (user) => {
+        if (user) {
+          userId = user.uid;
+          const sanitizedGameAppIdForRtdb = gameAppId.replace(/\./g, "_");
+          const userStatusDatabaseRef = ref(
+            rtdb,
+            `artifacts/${sanitizedGameAppIdForRtdb}/public/data/status/${userId}`
+          );
+          const isOfflineForDatabase = {
+            state: "offline",
+            last_changed: serverTimestamp(),
+          };
+          const isOnlineForDatabase = {
+            state: "online",
+            last_changed: serverTimestamp(),
+          };
+
+          onValue(ref(rtdb, ".info/connected"), (snapshot) => {
+            if (snapshot.val() === false) {
+              return;
+            }
+            onDisconnect(userStatusDatabaseRef)
+              .set(isOfflineForDatabase)
+              .then(() => {
+                set(userStatusDatabaseRef, isOnlineForDatabase);
+              });
+          });
+        }
+      });
+
+      const showScreen = (screen) => {
+        landingScreen.classList.add("hidden");
+        waitingRoom.classList.add("hidden");
+        gameBoard.classList.add("hidden");
+        screen.classList.remove("hidden");
+      };
+
+      const showModal = (title, message, onOk = () => {}) => {
+        document.getElementById("modal-title").textContent = title;
+        document.getElementById("modal-message").textContent = message;
+        document.getElementById("message-modal").classList.remove("hidden");
+        modalContainer.classList.remove("hidden");
+        document.getElementById("modal-ok-btn").onclick = () => {
+          document.getElementById("message-modal").classList.add("hidden");
+          if (!rulesModal.classList.contains("hidden")) {
+          } else {
+            modalContainer.classList.add("hidden");
+          }
+          onOk();
+        };
+      };
+
+      const showLoading = (message = "Loading...") => {
+        const loadingModal = document.createElement("div");
+        loadingModal.id = "loading-modal";
+        loadingModal.className =
+          "fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50";
+        loadingModal.innerHTML = `
+          <div class="bg-slate-800 rounded-xl shadow-2xl p-8 text-center max-w-sm w-full">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p class="text-slate-300">${message}</p>
+          </div>
+        `;
+        document.body.appendChild(loadingModal);
+      };
+
+      const hideLoading = () => {
+        const loadingModal = document.getElementById("loading-modal");
+        if (loadingModal) {
+          loadingModal.remove();
+        }
+      };
+
+      const showRules = () => {
+        rulesModal.classList.remove("hidden");
+        modalContainer.classList.remove("hidden");
+      };
+
+      const hideRules = () => {
+        rulesModal.classList.add("hidden");
+        if (
+          document
+            .getElementById("message-modal")
+            .classList.contains("hidden") &&
+          document
+            .getElementById("scoreboard-modal")
+            .classList.contains("hidden")
+        ) {
+          modalContainer.classList.add("hidden");
+        }
+      };
+
+      const createNewGame = async () => {
+        const playerName = document.getElementById("player-name").value.trim();
+        if (!playerName || !userId) {
+          showModal("Error", "Please enter your name first.");
+          return;
+        }
+
+        if (!isOnline) {
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection."
+          );
+          return;
+        }
+
+        showLoading("Creating new game...");
+        try {
+          localPlayerState.name = playerName;
+          gameId = Math.random().toString(36).substring(2, 8).toUpperCase();
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameId
+          );
+
+          const newPlayer = {
+            id: userId,
+            name: playerName,
+            score: 0,
+            hand: [],
+          };
+          const newGame = {
+            hostId: userId,
+            players: [newPlayer],
+            playerIds: [userId],
+            deck: [],
+            discardPile: [],
+            currentPlayerIndex: 0,
+            gameState: "waiting",
+            kabuPlayerId: null,
+            lastRoundPlayerId: null,
+            log: [`Game created by ${playerName}.`],
+            scores: {},
+            createdAt: new Date().toISOString(),
+          };
+          await setDoc(gameRef, newGame);
+          subscribeToGame(gameId);
+          showScreen(waitingRoom);
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showModal("Error", "Failed to create game. Please try again.");
+        }
+      };
+
+      const joinGame = async () => {
+        const playerName = document.getElementById("player-name").value.trim();
+        const gameIdToJoin = document
+          .getElementById("game-id-input")
+          .value.trim()
+          .toUpperCase();
+        if (!playerName || !gameIdToJoin || !userId) {
+          showModal("Error", "Please enter your name and a Game ID.");
+          return;
+        }
+
+        if (!isOnline) {
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection."
+          );
+          return;
+        }
+
+        showLoading("Joining game...");
+        try {
+          localPlayerState.name = playerName;
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameIdToJoin
+          );
+          const gameSnap = await getDoc(gameRef);
+
+          if (gameSnap.exists()) {
+            const gameData = gameSnap.data();
+            if (gameData.gameState !== "waiting") {
+              hideLoading();
+              showModal("Error", "This game has already started.");
+              return;
+            }
+            if (gameData.players.length >= 8) {
+              hideLoading();
+              showModal("Error", "This game is full.");
+              return;
+            }
+            if (gameData.players.some((p) => p.id === userId)) {
+              // Player is rejoining
+            } else {
+              const newPlayer = {
+                id: userId,
+                name: playerName,
+                score: 0,
+                hand: [],
+              };
+              await updateDoc(gameRef, {
+                players: arrayUnion(newPlayer),
+                playerIds: arrayUnion(userId),
+              });
+            }
+            subscribeToGame(gameIdToJoin);
+            showScreen(waitingRoom);
+            hideLoading();
+          } else {
+            hideLoading();
+            showModal("Error", "Game not found. Please check the ID.");
+          }
+        } catch (error) {
+          hideLoading();
+          showModal("Error", "Failed to join game. Please try again.");
+        }
+      };
+
+      const subscribeToGame = (newGameId) => {
+        gameId = newGameId;
+        if (unsubscribeGame) {
+          unsubscribeGame();
+        }
+        const gameDocRef = doc(
+          db,
+          `artifacts/${gameAppId}/public/data/kabu_games`,
+          gameId
+        );
+        unsubscribeGame = onSnapshot(
+          gameDocRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const gameData = docSnap.data();
+              handleGameUpdate(gameData, gameDocRef);
+            } else {
+              showModal("Game Over", "The game no longer exists.", () =>
+                window.location.reload()
+              );
+              if (unsubscribeGame) {
+                unsubscribeGame();
+                unsubscribeGame = null;
+              }
+            }
+          },
+          (error) => {
+            if (error.code === "unavailable") {
+              handleConnectionLoss();
+            }
+          }
+        );
+      };
+
+      const handleDisconnect = async (gameData, gameDocRef) => {
+        const onlinePlayers = new Map();
+        const sanitizedGameAppIdForRtdb = gameAppId.replace(/\./g, "_");
+        const statusRef = ref(
+          rtdb,
+          `artifacts/${sanitizedGameAppIdForRtdb}/public/data/status`
+        );
+        onValue(
+          statusRef,
+          (snapshot) => {
+            const statuses = snapshot.val() || {};
+            gameData.players.forEach((player) => {
+              if (
+                statuses[player.id] &&
+                statuses[player.id].state === "online"
+              ) {
+                onlinePlayers.set(player.id, true);
+              }
+            });
+
+            const isHost = userId === gameData.hostId;
+            const hasDisconnectedPlayers = gameData.players.some(
+              (p) => !onlinePlayers.has(p.id)
+            );
+
+            if (
+              isHost &&
+              hasDisconnectedPlayers &&
+              gameData.gameState !== "waiting"
+            ) {
+              const activePlayers = gameData.players.filter((p) =>
+                onlinePlayers.has(p.id)
+              );
+              const activePlayerIds = gameData.playerIds.filter((id) =>
+                onlinePlayers.has(id)
+              );
+
+              if (
+                activePlayers.length > 0 &&
+                activePlayers.length < gameData.players.length
+              ) {
+                const updates = {
+                  players: activePlayers,
+                  playerIds: activePlayerIds,
+                };
+                const currentPlayer =
+                  gameData.players[gameData.currentPlayerIndex];
+                if (currentPlayer && !onlinePlayers.has(currentPlayer.id)) {
+                  updates.log = arrayUnion(
+                    `${currentPlayer.name} disconnected. Skipping turn.`
+                  );
+                  updates.currentPlayerIndex =
+                    gameData.currentPlayerIndex % activePlayers.length;
+                } else if (!currentPlayer) {
+                  updates.currentPlayerIndex = 0;
+                }
+                updateDoc(gameDocRef, updates);
+              }
+            }
+          },
+          { onlyOnce: true }
+        );
+      };
+
+      const handleGameUpdate = (gameData, gameDocRef) => {
+        handleDisconnect(gameData, gameDocRef);
+
+        if (gameData.gameState === "waiting") {
+          updateWaitingRoom(gameData);
+        } else {
+          if (gameBoard.classList.contains("hidden")) {
+            showScreen(gameBoard);
+          }
+          renderGameBoard(gameData);
+        }
+        if (
+          (gameData.gameState === "round_over" ||
+            gameData.gameState === "game_over") &&
+          document
+            .getElementById("scoreboard-modal")
+            .classList.contains("hidden")
+        ) {
+          calculateAndShowScores(gameData);
+        }
+      };
+
+      const handleConnectionLoss = () => {
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          showModal(
+            "Connection Lost",
+            `Lost connection to game server. Attempting to reconnect... (${reconnectAttempts}/${maxReconnectAttempts})`,
+            () => {
+              reconnectTimeout = setTimeout(() => {
+                if (isOnline) {
+                  initialize();
+                }
+              }, 2000 * reconnectAttempts);
+            }
+          );
+        } else {
+          showModal(
+            "Connection Failed",
+            "Unable to reconnect to the game server. Please refresh the page.",
+            () => window.location.reload()
+          );
+        }
+      };
+
+      const cleanup = () => {
+        if (unsubscribeGame) {
+          unsubscribeGame();
+          unsubscribeGame = null;
+        }
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = null;
+        }
+      };
+
+      const updateWaitingRoom = (gameData) => {
+        document.getElementById("game-id-display").textContent = gameId;
+        const playerList = document.getElementById("player-list");
+        playerList.innerHTML = "";
+        gameData.players.forEach((player) => {
+          const playerEl = document.createElement("div");
+          playerEl.textContent =
+            player.name + (player.id === gameData.hostId ? " (Host)" : "");
+          playerList.appendChild(playerEl);
+        });
+
+        if (userId === gameData.hostId) {
+          startGameBtn.classList.remove("hidden");
+          startGameBtn.disabled = gameData.players.length < 2;
+        }
+      };
+
+      const createDeck = () => {
+        const deck = [];
+        for (const suit of Object.keys(SUITS)) {
+          for (const value of VALUES) {
+            deck.push({ suit, value });
+          }
+        }
+        return deck;
+      };
+
+      const shuffleDeck = (deck) => {
+        for (let i = deck.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+        return deck;
+      };
+
+      const getCardValue = (card) => {
+        if (!card || !card.value) return 0;
+        if (VALUES.indexOf(card.value) >= 1 && VALUES.indexOf(card.value) <= 9)
+          return VALUES.indexOf(card.value) + 1;
+        if (["J", "Q"].includes(card.value)) return 10;
+        if (card.value === "K" && (card.suit === "♥" || card.suit === "♦"))
+          return 0;
+        if (card.value === "K" && (card.suit === "♣" || card.suit === "♠"))
+          return 13;
+        if (card.value === "A") return 1;
+        return 0;
+      };
+
+      const startGame = async () => {
+        if (!isOnline) {
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection."
+          );
+          return;
+        }
+
+        showLoading("Starting game...");
+        try {
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameId
+          );
+          const gameSnap = await getDoc(gameRef);
+          if (!gameSnap.exists()) {
+            hideLoading();
+            showModal("Error", "Game not found.");
+            return;
+          }
+
+          const gameData = gameSnap.data();
+          let deck = shuffleDeck(createDeck());
+          const players = gameData.players.map((p) => ({ ...p, hand: [] }));
+          const scores = {};
+
+          for (let i = 0; i < 4; i++) {
+            for (const player of players) {
+              player.hand.push(deck.pop());
+            }
+          }
+          players.forEach((p) => (scores[p.id] = p.score));
+
+          await updateDoc(gameRef, {
+            gameState: "initial_peek",
+            deck,
+            players,
+            discardPile: [deck.pop()],
+            currentPlayerIndex: 0,
+            log: arrayUnion(`${localPlayerState.name} started the game!`),
+            kabuPlayerId: null,
+            lastRoundPlayerId: null,
+            scores: scores,
+          });
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showModal("Error", "Failed to start game. Please try again.");
+        }
+      };
+
+      const renderGameBoard = (gameData) => {
+        const localPlayer = gameData.players.find((p) => p.id === userId);
+        if (!localPlayer) return;
+        const opponents = gameData.players.filter((p) => p.id !== userId);
+        const isMyTurn =
+          gameData.players.length > 0 &&
+          gameData.players[gameData.currentPlayerIndex]?.id === userId;
+
+        document.getElementById(
+          "local-player-name"
+        ).textContent = `${localPlayer.name} (You)`;
+
+        renderPlayerHand(localPlayer.hand, gameData, isMyTurn);
+        renderOpponents(opponents, gameData);
+        renderDeckAndDiscard(gameData, isMyTurn);
+        renderGamePlayerList(gameData);
+        renderGameLog(gameData.log);
+      };
+
+      const renderPlayerHand = (hand, gameData, isMyTurn) => {
+        const playerHandDiv = document.getElementById("player-hand");
+        playerHandDiv.innerHTML = "";
+
+        const isInitialPeek = gameData.gameState === "initial_peek";
+        const canInteract =
+          (isMyTurn &&
+            ["playing", "kabu_called"].includes(gameData.gameState)) ||
+          localPlayerState.isPeeking ||
+          localPlayerState.isSpying ||
+          localPlayerState.isSwapping;
+
+        hand.forEach((card, index) => {
+          const cardEl = createCardElement(card, index, true, gameData);
+          if (canInteract) {
+            cardEl.classList.add("cursor-pointer");
+            cardEl.onclick = () => handlePlayerCardClick(index, gameData);
+          }
+          if (localPlayerState.selectedCardIndex === index) {
+            cardEl.classList.add("selected-card");
+          }
+          playerHandDiv.appendChild(cardEl);
+        });
+
+        if (isInitialPeek) {
+          const peekMessage = document.createElement("div");
+          peekMessage.className =
+            "absolute -top-12 left-1/2 -translate-x-1/2 bg-blue-600 p-3 rounded-lg shadow-lg";
+          peekMessage.textContent = "Take a peek at your two closest cards!";
+          playerHandDiv.appendChild(peekMessage);
+
+          setTimeout(() => {
+            const gameRef = doc(
+              db,
+              `artifacts/${gameAppId}/public/data/kabu_games`,
+              gameId
+            );
+            getDoc(gameRef).then((docSnap) => {
+              if (
+                docSnap.exists() &&
+                docSnap.data().gameState === "initial_peek" &&
+                docSnap.data().hostId === userId
+              ) {
+                updateDoc(gameRef, { gameState: "playing" });
+              }
+            });
+          }, 5000);
+        } else if (
+          isMyTurn &&
+          gameData.gameState === "playing" &&
+          !localPlayerState.drawnCard
+        ) {
+          const kabuButton = document.createElement("button");
+          kabuButton.textContent = "Call Kabu!";
+          kabuButton.className =
+            "absolute -top-16 left-1/2 -translate-x-1/2 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition kabu-glow";
+          kabuButton.onclick = callKabu;
+          playerHandDiv.appendChild(kabuButton);
+        }
+      };
+
+      const renderOpponents = (opponents, gameData) => {
+        const opponentsArea = document.getElementById("opponents-area");
+        opponentsArea.innerHTML = "";
+        opponents.forEach((opponent) => {
+          const opponentDiv = document.createElement("div");
+          opponentDiv.className = "text-center";
+          const opponentName = document.createElement("p");
+          opponentName.textContent = opponent.name;
+          opponentName.className = "font-semibold mb-2";
+          opponentDiv.appendChild(opponentName);
+
+          const opponentHand = document.createElement("div");
+          opponentHand.className = "flex justify-center gap-2";
+          opponent.hand.forEach((card, index) => {
+            const cardEl = createCardElement(
+              card,
+              index,
+              false,
+              gameData,
+              opponent.id
+            );
+            if (localPlayerState.isSpying || localPlayerState.isSwapping) {
+              cardEl.classList.add(
+                "cursor-pointer",
+                "hover:border-green-400",
+                "border-2",
+                "border-transparent"
+              );
+              cardEl.onclick = () =>
+                handleOpponentCardClick(opponent, index, gameData);
+            }
+            opponentHand.appendChild(cardEl);
+          });
+          opponentDiv.appendChild(opponentHand);
+          opponentsArea.appendChild(opponentDiv);
+        });
+      };
+
+      const renderDeckAndDiscard = (gameData, isMyTurn) => {
+        const canDraw =
+          isMyTurn &&
+          !localPlayerState.drawnCard &&
+          ["playing", "kabu_called"].includes(gameData.gameState);
+
+        deckPile.classList.toggle("cursor-pointer", canDraw);
+        deckPile.onclick = canDraw ? () => drawFromDeck(gameData) : null;
+
+        discardPile.classList.toggle("cursor-pointer", canDraw);
+        discardPile.onclick = canDraw ? () => drawFromDiscard(gameData) : null;
+
+        const topDiscard =
+          gameData.discardPile[gameData.discardPile.length - 1];
+        discardPile.innerHTML = "";
+        if (topDiscard) {
+          const cardEl = createCardElement(topDiscard, -1, false, {
+            ...gameData,
+            gameState: "round_over",
+          }); // Force show front
+          discardPile.appendChild(cardEl);
+        } else {
+          discardPile.innerHTML = `<div class="w-full h-full border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center text-slate-500">EMPTY</div>`;
+        }
+      };
+
+      const renderGamePlayerList = (gameData) => {
+        const listEl = document.getElementById("game-player-list");
+        listEl.innerHTML = "";
+        gameData.players.forEach((player, index) => {
+          const playerEl = document.createElement("div");
+          playerEl.className = "p-2 rounded-lg transition";
+          playerEl.textContent = `${player.name}: ${player.score}`;
+          if (index === gameData.currentPlayerIndex) {
+            playerEl.classList.add("bg-blue-600", "active-player-indicator");
+          }
+          listEl.appendChild(playerEl);
+        });
+      };
+
+      const renderGameLog = (log) => {
+        const logEl = document.getElementById("game-log");
+        logEl.innerHTML = log
+          .slice()
+          .reverse()
+          .map((entry) => `<div>- ${entry}</div>`)
+          .join("");
+        logEl.scrollTop = 0;
+      };
+
+      const createCardElement = (
+        card,
+        index,
+        isPlayer,
+        gameData,
+        ownerId = null
+      ) => {
+        const cardEl = document.createElement("div");
+        cardEl.className = "w-20 h-28 sm:w-24 sm:h-36 relative card";
+
+        const inner = document.createElement("div");
+        inner.className = "relative w-full h-full flippable-card-inner";
+
+        const front = document.createElement("div");
+        front.className = "card-face card-front";
+        if (card) {
+          const color = SUITS[card.suit];
+          front.innerHTML = `
+                    <div class="card-corner top" style="color: ${color};">
+                        <div>${card.value}</div>
+                        <div>${card.suit}</div>
+                    </div>
+                    <div class="card-value" style="color: ${color};">${card.suit}</div>
+                    <div class="card-corner bottom" style="color: ${color};">
+                        <div>${card.value}</div>
+                        <div>${card.suit}</div>
+                    </div>
+                `;
+        }
+
+        const back = document.createElement("div");
+        back.className = "card-face card-back";
+        back.innerHTML = `<div class="card-back-inner">K</div>`;
+
+        inner.appendChild(front);
+        inner.appendChild(back);
+        cardEl.appendChild(inner);
+
+        let showFront = false;
+        if (isPlayer) {
+          const isInitialPeek = gameData.gameState === "initial_peek";
+          if (isInitialPeek && (index === 0 || index === 1)) showFront = true;
+          if (localPlayerState.peekedCardIndex === index) showFront = true;
+        }
+        if (
+          gameData.gameState === "round_over" ||
+          gameData.gameState === "game_over"
+        ) {
+          showFront = true;
+        }
+        if (
+          localPlayerState.spiedCard &&
+          localPlayerState.spiedCard.playerId === ownerId &&
+          localPlayerState.spiedCard.cardIndex === index
+        ) {
+          showFront = true;
+        }
+
+        if (showFront) inner.classList.add("is-flipped");
+
+        return cardEl;
+      };
+
+      const drawFromDeck = async (gameData) => {
+        if (localPlayerState.drawnCard) return;
+        const drawnCard = gameData.deck[gameData.deck.length - 1];
+        localPlayerState.drawnCard = drawnCard;
+
+        const cardValue = getCardValue(drawnCard);
+        if (cardValue >= 7 && cardValue <= 12) {
+          const customConfirmModal = document.createElement("div");
+          customConfirmModal.className =
+            "fixed inset-0 flex items-center justify-center";
+          customConfirmModal.innerHTML = `
+                    <div id="custom-confirm-modal" class="bg-slate-800 rounded-xl shadow-2xl p-8 text-center max-w-sm w-full">
+                        <h3 class="text-2xl font-bold mb-4">You Drew ${drawnCard.value}${drawnCard.suit}</h3>
+                        <p class="text-slate-300 mb-6">Do you want to KEEP this card or USE its power?</p>
+                        <div class="flex gap-4">
+                            <button id="confirm-keep-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition">Keep</button>
+                            <button id="confirm-use-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition">Use Power</button>
+                        </div>
+                    </div>`;
+          modalContainer.appendChild(customConfirmModal);
+          modalContainer.classList.remove("hidden");
+
+          document.getElementById("confirm-keep-btn").onclick = () => {
+            modalContainer.removeChild(customConfirmModal);
+            modalContainer.classList.add("hidden");
+            showModal("Keep Card", "Select a card from your hand to replace.");
+          };
+          document.getElementById("confirm-use-btn").onclick = () => {
+            modalContainer.removeChild(customConfirmModal);
+            modalContainer.classList.add("hidden");
+            useCardPower(drawnCard, gameData);
+          };
+        } else {
+          showModal(
+            "Replace Card",
+            `You drew a ${drawnCard.value}${drawnCard.suit}. Select a card from your hand to replace.`
+          );
+        }
+      };
+
+      const drawFromDiscard = (gameData) => {
+        if (localPlayerState.drawnCard) return;
+        const drawnCard = gameData.discardPile[gameData.discardPile.length - 1];
+        localPlayerState.drawnCard = drawnCard;
+        showModal(
+          "Replace Card",
+          `You took the ${drawnCard.value}${drawnCard.suit}. Select a card from your hand to replace.`
+        );
+      };
+
+      const useCardPower = (card, gameData) => {
+        const cardValue = getCardValue(card);
+        const gameRef = doc(
+          db,
+          `artifacts/${gameAppId}/public/data/kabu_games`,
+          gameId
+        );
+        updateDoc(gameRef, {
+          log: arrayUnion(
+            `${localPlayerState.name} used the power of ${card.value}${card.suit}.`
+          ),
+        });
+
+        localPlayerState.isPeeking = false;
+        localPlayerState.isSpying = false;
+        localPlayerState.isSwapping = false;
+
+        if (cardValue === 7 || cardValue === 8) {
+          // PEEK
+          localPlayerState.isPeeking = true;
+          showModal("Peek", "Select one of your own cards to look at.");
+        } else if (cardValue === 9 || cardValue === 10) {
+          // SPY
+          localPlayerState.isSpying = true;
+          showModal("Spy", "Select an opponent's card to look at.");
+        } else if (cardValue === 11 || cardValue === 12) {
+          // SWAP
+          localPlayerState.isSwapping = true;
+          showModal("Swap", "First, select one of your cards.");
+        }
+        endTurnAfterPower(card);
+      };
+
+      const handlePlayerCardClick = async (index, gameData) => {
+        if (localPlayerState.isPeeking) {
+          localPlayerState.peekedCardIndex = index;
+          renderGameBoard(gameData);
+          setTimeout(() => {
+            localPlayerState.peekedCardIndex = null;
+            localPlayerState.isPeeking = false;
+            renderGameBoard(gameData);
+          }, 3000);
+          return;
+        }
+        if (localPlayerState.isSpying) return;
+
+        if (localPlayerState.isSwapping) {
+          localPlayerState.selectedCardIndex = index;
+          showModal("Swap", "Now, select an opponent's card to swap with.");
+          renderGameBoard(gameData);
+          return;
+        }
+
+        if (localPlayerState.drawnCard) {
+          localPlayerState.selectedCardIndex = index;
+          await performSwap(gameData);
+        }
+      };
+
+      const handleOpponentCardClick = async (opponent, cardIndex, gameData) => {
+        if (localPlayerState.isSpying) {
+          const cardToSpy = opponent.hand[cardIndex];
+          localPlayerState.spiedCard = {
+            playerId: opponent.id,
+            cardIndex,
+            value: cardToSpy.value,
+            suit: cardToSpy.suit,
+          };
+          renderGameBoard(gameData);
+          setTimeout(() => {
+            localPlayerState.spiedCard = null;
+            localPlayerState.isSpying = false;
+            renderGameBoard(gameData);
+          }, 3000);
+        }
+
+        if (
+          localPlayerState.isSwapping &&
+          localPlayerState.selectedCardIndex !== null
+        ) {
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameId
+          );
+          const localPlayerIndex = gameData.players.findIndex(
+            (p) => p.id === userId
+          );
+          const opponentPlayerIndex = gameData.players.findIndex(
+            (p) => p.id === opponent.id
+          );
+
+          const myCard =
+            gameData.players[localPlayerIndex].hand[
+              localPlayerState.selectedCardIndex
+            ];
+          const opponentCard =
+            gameData.players[opponentPlayerIndex].hand[cardIndex];
+
+          let newPlayers = [...gameData.players];
+          newPlayers[localPlayerIndex].hand[
+            localPlayerState.selectedCardIndex
+          ] = opponentCard;
+          newPlayers[opponentPlayerIndex].hand[cardIndex] = myCard;
+
+          await updateDoc(gameRef, {
+            players: newPlayers,
+            log: arrayUnion(
+              `${localPlayerState.name} swapped a card with ${opponent.name}.`
+            ),
+          });
+
+          localPlayerState.selectedCardIndex = null;
+          localPlayerState.isSwapping = false;
+        }
+      };
+
+      const performSwap = async (gameData) => {
+        if (!isOnline) {
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection."
+          );
+          return;
+        }
+
+        try {
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameId
+          );
+
+          let newPlayers = [...gameData.players];
+          const playerIndex = newPlayers.findIndex((p) => p.id === userId);
+          const discardedCard =
+            newPlayers[playerIndex].hand[localPlayerState.selectedCardIndex];
+          newPlayers[playerIndex].hand[localPlayerState.selectedCardIndex] =
+            localPlayerState.drawnCard;
+
+          let newDeck = [...gameData.deck];
+          let newDiscardPile = [...gameData.discardPile];
+
+          const cardSource = gameData.discardPile.some(
+            (c) =>
+              c.value === localPlayerState.drawnCard.value &&
+              c.suit === localPlayerState.drawnCard.suit
+          )
+            ? "discard"
+            : "deck";
+
+          if (cardSource === "deck") {
+            newDeck.pop();
+          } else {
+            newDiscardPile.pop();
+          }
+
+          newDiscardPile.push(discardedCard);
+
+          await updateDoc(gameRef, {
+            players: newPlayers,
+            deck: newDeck,
+            discardPile: newDiscardPile,
+            log: arrayUnion(`${localPlayerState.name} replaced a card.`),
+          });
+
+          endTurn(gameData);
+        } catch (error) {
+          showModal("Error", "Failed to complete your turn. Please try again.");
+        }
+      };
+
+      const endTurnAfterPower = (usedCard) => {
+        setTimeout(async () => {
+          if (!isOnline) {
+            showModal(
+              "Offline",
+              "You are currently offline. Please check your internet connection."
+            );
+            return;
+          }
+
+          try {
+            const gameRef = doc(
+              db,
+              `artifacts/${gameAppId}/public/data/kabu_games`,
+              gameId
+            );
+            const gameSnap = await getDoc(gameRef);
+            if (!gameSnap.exists()) {
+              showModal("Error", "Game not found.");
+              return;
+            }
+            const gameData = gameSnap.data();
+
+            await updateDoc(gameRef, {
+              discardPile: arrayUnion(usedCard),
+              deck: gameData.deck.filter(
+                (c) => c.value !== usedCard.value || c.suit !== usedCard.suit
+              ),
+            });
+            endTurn(gameData);
+          } catch (error) {
+            showModal(
+              "Error",
+              "Failed to complete your turn. Please try again."
+            );
+          }
+        }, 3500);
+      };
+
+      const callKabu = async () => {
+        if (!isOnline) {
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection."
+          );
+          return;
+        }
+
+        try {
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameId
+          );
+          const gameSnap = await getDoc(gameRef);
+          if (!gameSnap.exists()) {
+            showModal("Error", "Game not found.");
+            return;
+          }
+          const gameData = gameSnap.data();
+          await updateDoc(gameRef, {
+            kabuPlayerId: userId,
+            lastRoundPlayerId: userId,
+            gameState: "kabu_called",
+            log: arrayUnion(
+              `${localPlayerState.name} has called KABU! One more turn for everyone else.`
+            ),
+          });
+          endTurn(gameData);
+        } catch (error) {
+          showModal("Error", "Failed to call Kabu. Please try again.");
+        }
+      };
+
+      const endTurn = async (gameData) => {
+        localPlayerState.drawnCard = null;
+        localPlayerState.selectedCardIndex = null;
+
+        if (!gameData || !gameData.players || gameData.players.length === 0)
+          return;
+
+        const nextPlayerIndex =
+          (gameData.currentPlayerIndex + 1) % gameData.players.length;
+        const nextPlayerId = gameData.players[nextPlayerIndex].id;
+
+        const gameRef = doc(
+          db,
+          `artifacts/${gameAppId}/public/data/kabu_games`,
+          gameId
+        );
+
+        if (gameData.kabuPlayerId && nextPlayerId === gameData.kabuPlayerId) {
+          await updateDoc(gameRef, { gameState: "round_over" });
+        } else {
+          await updateDoc(gameRef, { currentPlayerIndex: nextPlayerIndex });
+        }
+      };
+
+      const calculateAndShowScores = (gameData) => {
+        const scoreboardTitle = document.getElementById("scoreboard-title");
+        const scoreboardBody = document.getElementById("scoreboard-body");
+        const totalBody = document.getElementById("scoreboard-total-body");
+        const nextRoundBtn = document.getElementById("next-round-btn");
+        const gameOverBtn = document.getElementById("game-over-btn");
+
+        scoreboardBody.innerHTML = "";
+        totalBody.innerHTML = "";
+
+        let roundScores = {};
+
+        gameData.players.forEach((player) => {
+          const handValue = player.hand.reduce(
+            (sum, card) => sum + getCardValue(card),
+            0
+          );
+          roundScores[player.id] = handValue;
+        });
+
+        const kabuPlayerId = gameData.kabuPlayerId;
+        if (kabuPlayerId) {
+          const kabuPlayerValue = roundScores[kabuPlayerId];
+          const minValue = Math.min(...Object.values(roundScores));
+          if (kabuPlayerValue > minValue) {
+            roundScores[kabuPlayerId] += 10; // Penalty
+          } else {
+            roundScores[kabuPlayerId] = 0; // Success!
+          }
+        }
+
+        let newTotalScores = { ...gameData.scores };
+        for (const id in roundScores) {
+          if (gameData.players.some((p) => p.id === id)) {
+            newTotalScores[id] = (newTotalScores[id] || 0) + roundScores[id];
+          }
+        }
+
+        scoreboardTitle.textContent =
+          gameData.gameState === "game_over" ? "Final Score" : "Round Over!";
+
+        gameData.players.forEach((p) => {
+          const scoreRow = document.createElement("div");
+          scoreRow.className = "flex justify-between items-center text-lg";
+          scoreRow.innerHTML = `<span>${p.name}</span><span>+${
+            roundScores[p.id]
+          }</span>`;
+          scoreboardBody.appendChild(scoreRow);
+
+          const totalRow = document.createElement("div");
+          totalRow.className =
+            "flex justify-between items-center text-xl font-bold";
+          totalRow.innerHTML = `<span>${p.name} (Total)</span><span>${
+            newTotalScores[p.id]
+          }</span>`;
+          totalBody.appendChild(totalRow);
+        });
+
+        modalContainer.classList.remove("hidden");
+        document.getElementById("scoreboard-modal").classList.remove("hidden");
+
+        const isGameOver = Object.values(newTotalScores).some(
+          (score) => score >= 100
+        );
+
+        if (isGameOver) {
+          const winner = gameData.players
+            .map((p) => ({
+              id: p.id,
+              name: p.name,
+              score: newTotalScores[p.id],
+            }))
+            .sort((a, b) => a.score - b.score)[0];
+          scoreboardTitle.textContent = `Game Over! ${winner.name} Wins!`;
+          gameOverBtn.classList.remove("hidden");
+          nextRoundBtn.classList.add("hidden");
+          if (gameData.hostId === userId) {
+            const gameRef = doc(
+              db,
+              `artifacts/${gameAppId}/public/data/kabu_games`,
+              gameId
+            );
+            updateDoc(gameRef, {
+              gameState: "game_over",
+              scores: newTotalScores,
+            });
+          }
+        } else {
+          if (gameData.hostId === userId) {
+            nextRoundBtn.classList.remove("hidden");
+            const gameRef = doc(
+              db,
+              `artifacts/${gameAppId}/public/data/kabu_games`,
+              gameId
+            );
+            updateDoc(gameRef, { scores: newTotalScores });
+          }
+          gameOverBtn.classList.add("hidden");
+        }
+      };
+
+      const setupNextRound = async () => {
+        if (!isOnline) {
+          showModal(
+            "Offline",
+            "You are currently offline. Please check your internet connection."
+          );
+          return;
+        }
+
+        showLoading("Setting up next round...");
+        try {
+          modalContainer.classList.add("hidden");
+          document.getElementById("scoreboard-modal").classList.add("hidden");
+
+          const gameRef = doc(
+            db,
+            `artifacts/${gameAppId}/public/data/kabu_games`,
+            gameId
+          );
+          const gameSnap = await getDoc(gameRef);
+          if (!gameSnap.exists()) {
+            hideLoading();
+            showModal("Error", "Game not found.");
+            return;
+          }
+
+          const gameData = gameSnap.data();
+          let deck = shuffleDeck(createDeck());
+          const players = gameData.players.map((p) => ({
+            ...p,
+            score: gameData.scores[p.id],
+            hand: [],
+          }));
+
+          for (let i = 0; i < 4; i++) {
+            for (const player of players) {
+              player.hand.push(deck.pop());
+            }
+          }
+
+          await updateDoc(gameRef, {
+            gameState: "initial_peek",
+            deck,
+            players,
+            discardPile: [deck.pop()],
+            currentPlayerIndex: 0,
+            log: arrayUnion(`Starting new round!`),
+            kabuPlayerId: null,
+            lastRoundPlayerId: null,
+          });
+          hideLoading();
+        } catch (error) {
+          hideLoading();
+          showModal("Error", "Failed to start next round. Please try again.");
+        }
+      };
+
+      // Network monitoring
+      window.addEventListener("online", () => {
+        isOnline = true;
+        reconnectAttempts = 0;
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = null;
+        }
+      });
+
+      window.addEventListener("offline", () => {
+        isOnline = false;
+      });
+
+      // Cleanup on page unload
+      window.addEventListener("beforeunload", cleanup);
+      window.addEventListener("unload", cleanup);
+
+      document.getElementById("game-over-btn").onclick = () => {
+        cleanup();
+        window.location.reload();
+      };
+      document.getElementById("next-round-btn").onclick = setupNextRound;
+
+      // Button event listeners
+      createGameBtn.addEventListener("click", createNewGame);
+      joinGameBtn.addEventListener("click", joinGame);
+      startGameBtn.addEventListener("click", startGame);
+      copyGameIdBtn.addEventListener("click", () => {
+        navigator.clipboard
+          .writeText(gameId)
+          .then(() => {
+            showModal("Copied!", "Game ID copied to clipboard.");
+          })
+          .catch(() => {
+            showModal(
+              "Error",
+              "Failed to copy Game ID. Please copy manually: " + gameId
+            );
+          });
+      });
+      rulesBtn.addEventListener("click", showRules);
+      rulesCloseBtn.addEventListener("click", hideRules);
+
+      // Ensure DOM is fully loaded before initializing
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initialize);
+      } else {
+        initialize();
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "kabu-card-game",
+  "version": "1.0.0",
+  "description": "A real-time multiplayer card game built with Firebase",
+  "main": "index.html",
+  "scripts": {
+    "dev": "python -m http.server 8000",
+    "build": "echo 'No build step required for static HTML'",
+    "deploy": "netlify deploy --prod"
+  },
+  "keywords": [
+    "card-game",
+    "multiplayer",
+    "firebase",
+    "real-time",
+    "kabu"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {},
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
