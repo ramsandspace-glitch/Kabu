@@ -773,7 +773,7 @@
               return;
             }
             if (gameData.players.some((p) => p.id === userId)) {
-              // Player is rejoining
+              // Player is rejoining - no need to add them again
             } else {
               const newPlayer = {
                 id: userId,
@@ -784,8 +784,10 @@
               await updateDoc(gameRef, {
                 players: arrayUnion(newPlayer),
                 playerIds: arrayUnion(userId),
+                log: arrayUnion(`${playerName} joined the game.`),
               });
             }
+            gameId = gameIdToJoin;
             subscribeToGame(gameIdToJoin);
             showScreen(waitingRoom);
             hideLoading();
@@ -807,7 +809,7 @@
         const gameDocRef = doc(
           db,
           `artifacts/${gameAppId}/public/data/kabu_games`,
-          gameId
+          newGameId
         );
         unsubscribeGame = onSnapshot(
           gameDocRef,
